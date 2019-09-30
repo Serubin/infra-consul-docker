@@ -1,0 +1,55 @@
+# vim: ts=2:sts=2:sw=2:expandtab
+
+# Replica vers, refer here: https://dockerswarm.rocks/traefik/
+
+version: '3.3'
+
+services:
+  consul-leader:
+    image: consul
+    command: agent -server -client=0.0.0.0 -bootstrap -ui
+    volumes:
+      - /opt/data/consul/leader:/consul/data
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+      - 'CONSUL_LOCAL_CONFIG={"leave_on_terminate": true}'
+    networks:
+      - default
+      - traefik-public
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.port=8500"
+        - "traefik.domain=admin.serubin.net"
+        - "traefik.frontend.whiteList.sourceRange=172.110.20.64/32,129.21.39.75/32"
+        - "traefik.frontend.rule=Host: admin.serubin.net; PathPrefixStrip: /consul"
+        # Docker discovery settings
+        - "traefik.tags=${TRAEFIK_PUBLIC_TAG:-traefik-public}"
+        - "traefik.docker.network=traefik-public"
+        # Traefik service that listens to HTTP
+        - "traefik.redirectorservice.frontend.entryPoints=http"
+        - "traefik.redirectorservice.frontend.redirect.entryPoint=https"
+        # Traefik service that listens to HTTPS
+        - "traefik.webservice.frontend.entryPoints=https"
+
+  consul-replica:
+    image: consul
+    command: agent -server -client=0.0.0.0 -retry-join="consul-leader"
+    volumes:
+      - /opt/data/consul/replica:/consul/data
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+      - 'CONSUL_LOCAL_CONFIG={"leave_on_terminate": true}'
+    networks:
+      - default
+      - traefik-public
+    deploy:
+      replicas: 0 # This can be a variable: ${CONSUL_REPLICAS:-3}
+      #      placement:
+      #  preferences:
+      #    - spread: node.id
+
+networks:
+  traefik-public:
+    external: true
+
